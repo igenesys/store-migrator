@@ -210,85 +210,6 @@ function sync_store_products($store_id) {
     return true;
 }
 
-// Sync product stock info
-function sync_product_stock_info($product_id) {
-    $token = get_aspos_token();
-    if (!$token) {
-        return false;
-    }
-
-    // Get ASPOS ID from product meta
-    $aspos_id = get_post_meta($product_id, '_aspos_id', true);
-    if (!$aspos_id) {
-        store_migrator_log("No ASPOS ID found for product $product_id", 'error');
-        return false;
-    }
-
-    // Get store IDs from product meta
-    $store_ids_str = get_post_meta($product_id, '_aspos_store_ids', true);
-    if (!$store_ids_str) {
-        store_migrator_log("No store IDs found for product $product_id", 'error');
-        return false;
-    }
-
-    $store_ids = explode(',', $store_ids_str);
-    
-    $args = array(
-        'headers' => array(
-            'Authorization' => 'Bearer ' . $token
-        ),
-        'timeout' => 300,
-        'sslverify' => false
-    );
-
-    // Get stock info from API
-    $response = wp_remote_get(ASPOS_API_BASE . "/products/{$aspos_id}/stock-info", $args);
-    if (is_wp_error($response)) {
-        store_migrator_log("Stock info fetch failed for product {$aspos_id}: " . $response->get_error_message(), 'error');
-        return false;
-    }
-
-    $stock_info = json_decode(wp_remote_retrieve_body($response));
-    if (!$stock_info) {
-        store_migrator_log("Invalid stock info response for product {$aspos_id}", 'error');
-        return false;
-    }
-
-    global $wpdb;
-    foreach ($store_ids as $store_id) {
-        // Update or insert stock info for each store
-        $wpdb->replace(
-            $wpdb->prefix . 'aspos_inventory',
-            array(
-                'storeId' => $store_id,
-                'availableQuantity' => $stock_info->availableQuantity ?? 0,
-                'physicalStockQuantity' => $stock_info->physicalStockQuantity ?? 0
-            ),
-            array('%s', '%f', '%f')
-        );
-    }
-
-    store_migrator_log("Successfully synced stock info for product $aspos_id");
-    return true;
-}
-
-// Sync stock info for all products
-function sync_all_products_stock_info() {
-    $products = get_posts(array(
-        'post_type' => 'product',
-        'posts_per_page' => -1,
-        'fields' => 'ids'
-    ));
-
-    $success = true;
-    foreach ($products as $product_id) {
-        if (!sync_product_stock_info($product_id)) {
-            $success = false;
-        }
-    }
-    return $success;
-}
-
 // Sync products for all stores
 function sync_all_store_products() {
     global $wpdb;
@@ -354,17 +275,7 @@ function store_migrator_settings_page() {
             <p>
                 <input type="submit" name="sync_products" class="button button-primary" value="Sync Products">
                 <input type="submit" name="sync_all_products" class="button button-primary" value="Sync All Products" style="margin-left: 10px;">
-                <input type="submit" name="sync_stock_info" class="button button-primary" value="Sync Stock Info" style="margin-left: 10px;">
             </p>
-
-            <?php if (isset($_POST['sync_stock_info'])):
-                $result = sync_all_products_stock_info();
-                if ($result) {
-                    echo '<div class="notice notice-success"><p>Stock information synced successfully!</p></div>';
-                } else {
-                    echo '<div class="notice notice-error"><p>Some products failed to sync stock info. Check debug log for details.</p></div>';
-                }
-            endif; ?>
 
             <?php if (isset($_POST['sync_all_products'])): 
                 $result = sync_all_store_products();
