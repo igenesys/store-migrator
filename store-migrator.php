@@ -228,13 +228,11 @@ function sync_product_inventory($product_id) {
     }
 
     // Get store IDs from product meta
-    $store_ids_str = get_post_meta($product_id, '_aspos_store_ids', true);
-    if (!$store_ids_str) {
-        store_migrator_log("No store IDs found for product $product_id", 'error');
+    $store_ids = maybe_unserialize(get_post_meta($product_id, '_aspos_store_ids', true));
+    if (!is_array($store_ids)) {
+        store_migrator_log("No valid store IDs found for product $product_id", 'error');
         return false;
     }
-
-    $store_ids = explode(',', $store_ids_str);
 
     $args = array(
         'headers' => array(
