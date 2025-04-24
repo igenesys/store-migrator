@@ -7,6 +7,27 @@
  * Author: Your Name
  */
 
+// Enable error logging
+define('STORE_MIGRATOR_DEBUG', true);
+define('STORE_MIGRATOR_LOG_FILE', WP_CONTENT_DIR . '/store-migrator-debug.log');
+
+function store_migrator_log($message, $type = 'info') {
+    if (!STORE_MIGRATOR_DEBUG) return;
+    
+    $date = date('Y-m-d H:i:s');
+    $log_message = "[$date][$type] $message" . PHP_EOL;
+    error_log($log_message, 3, STORE_MIGRATOR_LOG_FILE);
+}
+
+function store_migrator_api_error($function, $response) {
+    $error_data = is_wp_error($response) ? 
+        $response->get_error_message() : 
+        wp_remote_retrieve_response_code($response) . ': ' . wp_remote_retrieve_body($response);
+    
+    store_migrator_log("API Error in $function: $error_data", 'error');
+    return false;
+}
+
 // Prevent direct access
 if (!defined('ABSPATH')) {
     exit;
@@ -58,6 +79,8 @@ function store_migrator_create_tables() {
 
 // Get ASPOS bearer token
 function get_aspos_token() {
+    store_migrator_log('Attempting to get ASPOS token');
+    
     $args = array(
         'body' => array(
             'grant_type' => 'client_credentials',
@@ -68,11 +91,17 @@ function get_aspos_token() {
 
     $response = wp_remote_post(ASPOS_TOKEN_URL, $args);
     if (is_wp_error($response)) {
-        return false;
+        return store_migrator_api_error('get_aspos_token', $response);
     }
 
     $body = json_decode(wp_remote_retrieve_body($response));
-    return isset($body->access_token) ? $body->access_token : false;
+    if (!isset($body->access_token)) {
+        store_migrator_log('Failed to get access token from response', 'error');
+        return false;
+    }
+
+    store_migrator_log('Successfully obtained ASPOS token');
+    return $body->access_token;
 }
 
 // Sync stores
@@ -228,14 +257,34 @@ add_action('admin_menu', 'store_migrator_menu');
 // Create settings page
 function store_migrator_settings_page() {
     if (isset($_POST['sync_stores'])) {
-        sync_stores();
-        echo '<div class="notice notice-success"><p>Stores synced successfully!</p></div>';
+        store_migrator_log('Manual store sync initiated from admin panel');
+        $result = sync_stores();
+        if ($result) {
+            echo '<div class="notice notice-success"><p>Stores synced successfully!</p></div>';
+        } else {
+            echo '<div class="notice notice-error"><p>Store sync failed. Check debug log for details.</p></div>';
+        }
+    }
+
+    if (isset($_POST['clear_logs']) && STORE_MIGRATOR_DEBUG) {
+        file_put_contents(STORE_MIGRATOR_LOG_FILE, '');
+        echo '<div class="notice notice-success"><p>Debug logs cleared!</p></div>';
     }
     ?>
     <div class="wrap">
         <h2>Store Migrator Settings</h2>
         <form method="post" action="">
             <p><input type="submit" name="sync_stores" class="button button-primary" value="Sync Stores"></p>
+            
+            <?php if (STORE_MIGRATOR_DEBUG): ?>
+            <hr>
+            <h3>Debug Information</h3>
+            <p><input type="submit" name="clear_logs" class="button" value="Clear Debug Logs"></p>
+            
+            <div style="background: #fff; padding: 10px; margin-top: 10px; max-height: 400px; overflow: auto;">
+                <pre><?php echo esc_html(file_exists(STORE_MIGRATOR_LOG_FILE) ? file_get_contents(STORE_MIGRATOR_LOG_FILE) : 'No logs yet.'); ?></pre>
+            </div>
+            <?php endif; ?>
         </form>
     </div>
     <?php
