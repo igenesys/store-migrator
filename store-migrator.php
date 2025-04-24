@@ -1,4 +1,3 @@
-
 <?php
 /**
  * Plugin Name: Store Migrator
@@ -13,7 +12,7 @@ define('STORE_MIGRATOR_LOG_FILE', WP_CONTENT_DIR . '/store-migrator-debug.log');
 
 function store_migrator_log($message, $type = 'info') {
     if (!STORE_MIGRATOR_DEBUG) return;
-    
+
     $date = date('Y-m-d H:i:s');
     $log_message = "[$date][$type] $message" . PHP_EOL;
     error_log($log_message, 3, STORE_MIGRATOR_LOG_FILE);
@@ -23,7 +22,7 @@ function store_migrator_api_error($function, $response) {
     $error_data = is_wp_error($response) ? 
         $response->get_error_message() : 
         wp_remote_retrieve_response_code($response) . ': ' . wp_remote_retrieve_body($response);
-    
+
     store_migrator_log("API Error in $function: $error_data", 'error');
     return false;
 }
@@ -275,12 +274,12 @@ function store_migrator_settings_page() {
         <h2>Store Migrator Settings</h2>
         <form method="post" action="">
             <p><input type="submit" name="sync_stores" class="button button-primary" value="Sync Stores"></p>
-            
+
             <?php if (STORE_MIGRATOR_DEBUG): ?>
             <hr>
             <h3>Debug Information</h3>
             <p><input type="submit" name="clear_logs" class="button" value="Clear Debug Logs"></p>
-            
+
             <div style="background: #fff; padding: 10px; margin-top: 10px; max-height: 400px; overflow: auto;">
                 <pre><?php echo esc_html(file_exists(STORE_MIGRATOR_LOG_FILE) ? file_get_contents(STORE_MIGRATOR_LOG_FILE) : 'No logs yet.'); ?></pre>
             </div>
@@ -289,4 +288,3 @@ function store_migrator_settings_page() {
     </div>
     <?php
 }
-</new_str>
