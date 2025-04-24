@@ -251,20 +251,25 @@ function sync_product_inventory($product_id, $store_id) {
         return false;
     }
 
-    $stock_info = json_decode(wp_remote_retrieve_body($response));
+    $stock_info_array = json_decode(wp_remote_retrieve_body($response));
     global $wpdb;
 
-    $wpdb->replace(
-        $wpdb->prefix . 'aspos_inventory',
-        array(
-            'store_id' => $store_id,
-            'product_id' => $product_id,
-            'warehouse_id' => $stock_info->warehouseId,
-            'days_in_stock' => $stock_info->daysInStock,
-            'allow_system_override' => $stock_info->allowSystemOverride,
-            'updated_at' => current_time('mysql')
-        )
-    );
+    foreach ($stock_info_array as $stock_info) {
+        if ($stock_info->storeId == $store_id) {
+            $wpdb->replace(
+                $wpdb->prefix . 'aspos_inventory',
+                array(
+                    'store_id' => $store_id,
+                    'product_id' => $product_id,
+                    'warehouse_id' => $stock_info->warehouseId,
+                    'stock_quantity' => $stock_info->physicalStockQuantity,
+                    'allow_system_override' => $stock_info->allowSystemOverride,
+                    'updated_at' => current_time('mysql')
+                )
+            );
+            break;
+        }
+    }
 }
 
 // Add menu item
