@@ -51,6 +51,11 @@ function store_migrator_create_table() {
         aspos_product_id VARCHAR(255) NOT NULL,
         availableQuantity decimal(10,2) DEFAULT NULL,
         physicalStockQuantity decimal(10,2) DEFAULT NULL,
+        regularPrice VARCHAR(255) NOT NULL,
+        salePrice VARCHAR(255) NOT NULL,
+        priceInclTax VARCHAR(255) NOT NULL,
+        priceExclTax VARCHAR(255) NOT NULL,
+        
         PRIMARY KEY (ID)
     ) $charset_collate;";
 
