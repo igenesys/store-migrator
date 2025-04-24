@@ -60,11 +60,11 @@ function store_migrator_create_tables() {
         street VARCHAR(255),
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
     ) $charset_collate;";
-    
+
     store_migrator_log("Attempting to create stores table with SQL: " . $stores_sql);
     $stores_result = dbDelta($stores_sql);
     store_migrator_log("Result of stores table creation: " . print_r($stores_result, true));
-    
+
     if ($wpdb->last_error) {
         store_migrator_log("Database error during stores table creation: " . $wpdb->last_error, 'error');
     }
@@ -89,7 +89,7 @@ function store_migrator_create_tables() {
 // Get ASPOS bearer token
 function get_aspos_token() {
     store_migrator_log('Attempting to get ASPOS token');
-    
+
     $args = array(
         'body' => array(
             'grant_type' => 'client_credentials',
@@ -123,12 +123,14 @@ function sync_stores() {
     $args = array(
         'headers' => array(
             'Authorization' => 'Bearer ' . $token
-        )
+        ),
+        'timeout' => 300,
+        'sslverify' => false
     );
 
     $response = wp_remote_get(ASPOS_API_BASE . '/stores', $args);
     if (is_wp_error($response)) {
-        return false;
+        return store_migrator_api_error('sync_stores', $response);
     }
 
     $stores = json_decode(wp_remote_retrieve_body($response));
@@ -150,7 +152,7 @@ function sync_stores() {
                     'street' => $store->street
                 )
             );
-            
+
             // Sync products for this store
             sync_store_products($store->id);
         }
@@ -168,17 +170,19 @@ function sync_store_products($store_id) {
     $args = array(
         'headers' => array(
             'Authorization' => 'Bearer ' . $token
-        )
+        ),
+        'timeout' => 300,
+        'sslverify' => false
     );
 
     $response = wp_remote_get(ASPOS_API_BASE . "/sync/web-products?storeId={$store_id}", $args);
     if (is_wp_error($response)) {
-        return false;
+        return store_migrator_api_error('sync_store_products', $response);
     }
 
     $products = json_decode(wp_remote_retrieve_body($response));
     store_migrator_log("Syncing " . count($products) . " products for store $store_id");
-    
+
     foreach ($products as $product) {
         $post_meta = array(
             '_aspos_id' => $product->id,
@@ -220,12 +224,12 @@ function sync_store_products($store_id) {
                 }
                 update_post_meta($post_id, '_price', $product->priceInclTax);
                 update_post_meta($post_id, '_regular_price', $product->priceInclTax);
-                
+
                 // Sync inventory for this product
                 sync_product_inventory($product->id, $store_id);
             }
         }
-        
+
         // Also sync inventory for existing products
         if ($existing_product) {
             sync_product_inventory($product->id, $store_id);
@@ -243,12 +247,14 @@ function sync_product_inventory($product_id, $store_id) {
     $args = array(
         'headers' => array(
             'Authorization' => 'Bearer ' . $token
-        )
+        ),
+        'timeout' => 300,
+        'sslverify' => false
     );
 
     $response = wp_remote_get(ASPOS_API_BASE . "/products/{$product_id}/stock-info?storeId={$store_id}", $args);
     if (is_wp_error($response)) {
-        return false;
+        return store_migrator_api_error('sync_product_inventory', $response);
     }
 
     $stock_info_array = json_decode(wp_remote_retrieve_body($response));
