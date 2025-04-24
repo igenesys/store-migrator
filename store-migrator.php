@@ -243,14 +243,24 @@ function store_migrator_settings_page() {
     $stores = $wpdb->get_results("SELECT * FROM {$wpdb->prefix}aspos_stores");
     ?>
     <div class="wrap">
+        <link href="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/css/select2.min.css" rel="stylesheet" />
+        <script src="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/js/select2.min.js"></script>
+        <script>
+            jQuery(document).ready(function($) {
+                $('select[name="store_id"]').select2({
+                    placeholder: "Select a store",
+                    allowClear: true
+                });
+            });
+        </script>
         <h2>Store Migrator Settings</h2>
         <form method="post" action="">
             <p><input type="submit" name="sync_stores" class="button button-primary" value="Sync Stores"></p>
 
             <h3>Sync Products</h3>
-            <select name="store_id">
+            <select name="store_id" style="width: 300px;">
                 <?php foreach ($stores as $store): ?>
-                    <option value="<?php echo esc_attr($store->id); ?>"><?php echo esc_html($store->code); ?></option>
+                    <option value="<?php echo esc_attr($store->id); ?>"><?php echo esc_html($store->name ?: $store->code); ?></option>
                 <?php endforeach; ?>
             </select>
             <p>
