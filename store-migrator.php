@@ -45,8 +45,10 @@ function store_migrator_create_tables() {
     global $wpdb;
     $charset_collate = $wpdb->get_charset_collate();
 
+    require_once(ABSPATH . 'wp-admin/includes/upgrade.php');
+
     // Stores table
-    $sql = "CREATE TABLE IF NOT EXISTS `{$wpdb->prefix}aspos_stores` (
+    $stores_sql = "CREATE TABLE IF NOT EXISTS `{$wpdb->prefix}aspos_stores` (
         id VARCHAR(255) PRIMARY KEY,
         city VARCHAR(255),
         code VARCHAR(255),
@@ -59,8 +61,11 @@ function store_migrator_create_tables() {
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
     ) $charset_collate;";
     
+    $stores_result = dbDelta($stores_sql);
+    store_migrator_log("Creating stores table: " . print_r($stores_result, true));
+
     // Inventory table
-    $sql .= "CREATE TABLE IF NOT EXISTS `{$wpdb->prefix}aspos_inventory` (
+    $inventory_sql = "CREATE TABLE IF NOT EXISTS `{$wpdb->prefix}aspos_inventory` (
         id INT AUTO_INCREMENT PRIMARY KEY,
         store_id VARCHAR(255),
         product_id VARCHAR(255),
@@ -72,8 +77,8 @@ function store_migrator_create_tables() {
         UNIQUE KEY store_product (store_id, product_id)
     ) $charset_collate;";
 
-    require_once(ABSPATH . 'wp-admin/includes/upgrade.php');
-    dbDelta($sql);
+    $inventory_result = dbDelta($inventory_sql);
+    store_migrator_log("Creating inventory table: " . print_r($inventory_result, true));
 }
 
 // Get ASPOS bearer token
