@@ -47,6 +47,8 @@ function store_migrator_create_table() {
     $inventory_sql = "CREATE TABLE IF NOT EXISTS `{$wpdb->prefix}aspos_inventory` (
         ID bigint(20) NOT NULL AUTO_INCREMENT,
         storeId VARCHAR(255) NOT NULL,
+        product_id bigint(20) NOT NULL,
+        aspos_product_id VARCHAR(255) NOT NULL,
         availableQuantity decimal(10,2) DEFAULT NULL,
         physicalStockQuantity decimal(10,2) DEFAULT NULL,
         PRIMARY KEY (ID)
