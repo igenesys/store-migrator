@@ -188,6 +188,22 @@ function sync_store_products($store_id) {
     return true;
 }
 
+// Sync products for all stores
+function sync_all_store_products() {
+    global $wpdb;
+    $stores = $wpdb->get_results("SELECT id FROM {$wpdb->prefix}aspos_stores");
+    $success = true;
+    
+    foreach ($stores as $store) {
+        $result = sync_store_products($store->id);
+        if (!$result) {
+            $success = false;
+        }
+    }
+    
+    return $success;
+}
+
 // Settings page
 function store_migrator_settings_page() {
     global $wpdb;
@@ -224,7 +240,19 @@ function store_migrator_settings_page() {
                     <option value="<?php echo esc_attr($store->id); ?>"><?php echo esc_html($store->name); ?></option>
                 <?php endforeach; ?>
             </select>
-            <p><input type="submit" name="sync_products" class="button button-primary" value="Sync Products"></p>
+            <p>
+                <input type="submit" name="sync_products" class="button button-primary" value="Sync Products">
+                <input type="submit" name="sync_all_products" class="button button-primary" value="Sync All Products" style="margin-left: 10px;">
+            </p>
+
+            <?php if (isset($_POST['sync_all_products'])): 
+                $result = sync_all_store_products();
+                if ($result) {
+                    echo '<div class="notice notice-success"><p>All store products synced successfully!</p></div>';
+                } else {
+                    echo '<div class="notice notice-error"><p>Some stores failed to sync products. Check debug log for details.</p></div>';
+                }
+            endif; ?>
 
             <?php if (STORE_MIGRATOR_DEBUG): ?>
             <h3>Debug Log</h3>
