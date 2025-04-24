@@ -128,8 +128,70 @@ function store_migrator_menu() {
 }
 add_action('admin_menu', 'store_migrator_menu');
 
+// Sync products for a store
+function sync_store_products($store_id) {
+    $token = get_aspos_token();
+    if (!$token) {
+        return false;
+    }
+
+    $args = array(
+        'headers' => array(
+            'Authorization' => 'Bearer ' . $token
+        ),
+        'timeout' => 300,
+        'sslverify' => false
+    );
+
+    $response = wp_remote_get(ASPOS_API_BASE . "/sync/web-products?storeId={$store_id}", $args);
+    if (is_wp_error($response)) {
+        store_migrator_log("Product sync failed for store {$store_id}: " . $response->get_error_message(), 'error');
+        return false;
+    }
+
+    $products = json_decode(wp_remote_retrieve_body($response));
+    $count = 0;
+
+    foreach ($products as $product) {
+        // Check if product already exists by ASPOS ID
+        $existing_product_id = get_posts(array(
+            'post_type' => 'product',
+            'meta_key' => '_aspos_id',
+            'meta_value' => $product->id,
+            'posts_per_page' => 1,
+            'fields' => 'ids'
+        ));
+
+        $post_data = array(
+            'post_title' => $product->name,
+            'post_content' => $product->description ?? '',
+            'post_status' => 'publish',
+            'post_type' => 'product'
+        );
+
+        if ($existing_product_id) {
+            $post_data['ID'] = $existing_product_id[0];
+            $post_id = wp_update_post($post_data);
+        } else {
+            $post_id = wp_insert_post($post_data);
+        }
+
+        if ($post_id) {
+            update_post_meta($post_id, '_aspos_id', $product->id);
+            update_post_meta($post_id, '_price', $product->priceInclTax);
+            update_post_meta($post_id, '_regular_price', $product->priceInclTax);
+            $count++;
+        }
+    }
+
+    store_migrator_log("Successfully synced $count products for store $store_id");
+    return true;
+}
+
 // Settings page
 function store_migrator_settings_page() {
+    global $wpdb;
+    
     if (isset($_POST['sync_stores'])) {
         $result = sync_stores();
         if ($result) {
@@ -138,11 +200,31 @@ function store_migrator_settings_page() {
             echo '<div class="notice notice-error"><p>Store sync failed. Check debug log for details.</p></div>';
         }
     }
+
+    if (isset($_POST['sync_products']) && isset($_POST['store_id'])) {
+        $result = sync_store_products($_POST['store_id']);
+        if ($result) {
+            echo '<div class="notice notice-success"><p>Products synced successfully!</p></div>';
+        } else {
+            echo '<div class="notice notice-error"><p>Product sync failed. Check debug log for details.</p></div>';
+        }
+    }
+
+    // Get stores from database
+    $stores = $wpdb->get_results("SELECT id, name FROM {$wpdb->prefix}aspos_stores");
     ?>
     <div class="wrap">
         <h2>Store Migrator Settings</h2>
         <form method="post" action="">
             <p><input type="submit" name="sync_stores" class="button button-primary" value="Sync Stores"></p>
+
+            <h3>Sync Products</h3>
+            <select name="store_id">
+                <?php foreach ($stores as $store): ?>
+                    <option value="<?php echo esc_attr($store->id); ?>"><?php echo esc_html($store->name); ?></option>
+                <?php endforeach; ?>
+            </select>
+            <p><input type="submit" name="sync_products" class="button button-primary" value="Sync Products"></p>
 
             <?php if (STORE_MIGRATOR_DEBUG): ?>
             <h3>Debug Log</h3>
