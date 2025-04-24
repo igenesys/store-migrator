@@ -44,7 +44,16 @@ function store_migrator_create_table() {
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
     ) $charset_collate;";
 
+    $inventory_sql = "CREATE TABLE IF NOT EXISTS `{$wpdb->prefix}aspos_inventory` (
+        ID bigint(20) NOT NULL AUTO_INCREMENT,
+        storeId VARCHAR(255) NOT NULL,
+        availableQuantity decimal(10,2) DEFAULT NULL,
+        physicalStockQuantity decimal(10,2) DEFAULT NULL,
+        PRIMARY KEY (ID)
+    ) $charset_collate;";
+
     dbDelta($stores_sql);
+    dbDelta($inventory_sql);
 }
 
 // Get ASPOS bearer token
