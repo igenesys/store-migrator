@@ -220,7 +220,15 @@ function sync_store_products($store_id) {
                 }
                 update_post_meta($post_id, '_price', $product->priceInclTax);
                 update_post_meta($post_id, '_regular_price', $product->priceInclTax);
+                
+                // Sync inventory for this product
+                sync_product_inventory($product->id, $store_id);
             }
+        }
+        
+        // Also sync inventory for existing products
+        if ($existing_product) {
+            sync_product_inventory($product->id, $store_id);
         }
     }
 }
