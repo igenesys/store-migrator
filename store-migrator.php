@@ -163,7 +163,7 @@ function sync_store_products($store_id) {
         ));
 
         $post_data = array(
-            'post_title' => $product->name,
+            'post_title' => $product->description ?? '',
             'post_content' => $product->description ?? '',
             'post_status' => 'publish',
             'post_type' => 'product'
@@ -227,7 +227,7 @@ function store_migrator_settings_page() {
     }
 
     // Get stores from database
-    $stores = $wpdb->get_results("SELECT id, name FROM {$wpdb->prefix}aspos_stores");
+    $stores = $wpdb->get_results("SELECT * FROM {$wpdb->prefix}aspos_stores");
     ?>
     <div class="wrap">
         <h2>Store Migrator Settings</h2>
@@ -237,7 +237,7 @@ function store_migrator_settings_page() {
             <h3>Sync Products</h3>
             <select name="store_id">
                 <?php foreach ($stores as $store): ?>
-                    <option value="<?php echo esc_attr($store->id); ?>"><?php echo esc_html($store->name); ?></option>
+                    <option value="<?php echo esc_attr($store->id); ?>"><?php echo esc_html($store->code); ?></option>
                 <?php endforeach; ?>
             </select>
             <p>
