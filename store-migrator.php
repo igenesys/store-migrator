@@ -180,6 +180,19 @@ function sync_store_products($store_id) {
             update_post_meta($post_id, '_aspos_id', $product->id);
             update_post_meta($post_id, '_price', $product->priceInclTax);
             update_post_meta($post_id, '_regular_price', $product->priceInclTax);
+            
+            // Get existing store IDs
+            $store_ids = get_post_meta($post_id, '_aspos_store_ids', true);
+            if (!is_array($store_ids)) {
+                $store_ids = array();
+            }
+            
+            // Add current store ID if not exists
+            if (!in_array($store_id, $store_ids)) {
+                $store_ids[] = $store_id;
+                update_post_meta($post_id, '_aspos_store_ids', $store_ids);
+            }
+            
             $count++;
         }
     }
