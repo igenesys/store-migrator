@@ -192,11 +192,14 @@ function sync_store_products($store_id) {
         );
 
         $post_data = array(
-            'post_title' => $product->description,
-            'post_content' => $product->secondDescription,
+            'post_title' => $product->description ?? '',
+            'post_content' => $product->secondDescription ?? '',
             'post_status' => $product->state === 'Active' ? 'publish' : 'draft',
             'post_type' => 'product'
         );
+
+        // Log product data for debugging
+        store_migrator_log("Processing product: " . print_r($product, true));
 
         // Check if product exists
         $existing_product = get_posts(array(
