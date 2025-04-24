@@ -250,6 +250,7 @@ function sync_product_inventory($product_id) {
     }
 
     $stock_info = json_decode(wp_remote_retrieve_body($response));
+    
     if (!$stock_info) {
         store_migrator_log("Invalid stock info response for product {$aspos_product_id}", 'error');
         return false;
@@ -259,7 +260,7 @@ function sync_product_inventory($product_id) {
     $success = true;
 
     // Process each store in the stock info
-    foreach ($stock_info->stores as $store_info) {
+    foreach ($stock_info as $store_info) {
         // Only insert if store ID exists in product meta
         if (in_array($store_info->storeId, $store_ids)) {
             $result = $wpdb->replace(
