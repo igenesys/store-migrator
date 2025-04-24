@@ -212,6 +212,98 @@ function sync_store_products($store_id) {
     return true;
 }
 
+// Sync inventory for a product
+function sync_product_inventory($product_id) {
+    $token = get_aspos_token();
+    if (!$token) {
+        store_migrator_log("Failed to get token for product $product_id", 'error');
+        return false;
+    }
+
+    // Get ASPOS ID from product meta
+    $aspos_product_id = get_post_meta($product_id, '_aspos_id', true);
+    if (!$aspos_product_id) {
+        store_migrator_log("No ASPOS ID found for product $product_id", 'error');
+        return false;
+    }
+
+    // Get store IDs from product meta
+    $store_ids_str = get_post_meta($product_id, '_aspos_store_ids', true);
+    if (!$store_ids_str) {
+        store_migrator_log("No store IDs found for product $product_id", 'error');
+        return false;
+    }
+
+    $store_ids = explode(',', $store_ids_str);
+
+    $args = array(
+        'headers' => array(
+            'Authorization' => 'Bearer ' . $token
+        ),
+        'timeout' => 300,
+        'sslverify' => false
+    );
+
+    // Get stock info from API
+    $response = wp_remote_get(ASPOS_API_BASE . "/products/{$aspos_product_id}/stock-info", $args);
+    if (is_wp_error($response)) {
+        store_migrator_log("Stock info fetch failed for product {$aspos_product_id}: " . $response->get_error_message(), 'error');
+        return false;
+    }
+
+    $stock_info = json_decode(wp_remote_retrieve_body($response));
+    if (!$stock_info) {
+        store_migrator_log("Invalid stock info response for product {$aspos_product_id}", 'error');
+        return false;
+    }
+
+    global $wpdb;
+    $success = true;
+
+    // Process each store in the stock info
+    foreach ($stock_info->stores as $store_info) {
+        // Only insert if store ID exists in product meta
+        if (in_array($store_info->storeId, $store_ids)) {
+            $result = $wpdb->replace(
+                $wpdb->prefix . 'aspos_inventory',
+                array(
+                    'storeId' => $store_info->storeId,
+                    'product_id' => $product_id,
+                    'aspos_product_id' => $aspos_product_id,
+                    'availableQuantity' => $store_info->availableQuantity ?? 0,
+                    'physicalStockQuantity' => $store_info->physicalStockQuantity ?? 0
+                ),
+                array('%s', '%d', '%s', '%f', '%f')
+            );
+            
+            if ($result === false) {
+                store_migrator_log("Failed to update inventory for product $product_id in store {$store_info->storeId}", 'error');
+                $success = false;
+            }
+        }
+    }
+
+    store_migrator_log("Finished syncing inventory for product $product_id");
+    return $success;
+}
+
+// Sync inventory for all products
+function sync_all_inventory() {
+    $products = get_posts(array(
+        'post_type' => 'product',
+        'posts_per_page' => -1,
+        'fields' => 'ids'
+    ));
+
+    $success = true;
+    foreach ($products as $product_id) {
+        if (!sync_product_inventory($product_id)) {
+            $success = false;
+        }
+    }
+    return $success;
+}
+
 // Sync products for all stores
 function sync_all_store_products() {
     global $wpdb;
@@ -277,7 +369,17 @@ function store_migrator_settings_page() {
             <p>
                 <input type="submit" name="sync_products" class="button button-primary" value="Sync Products">
                 <input type="submit" name="sync_all_products" class="button button-primary" value="Sync All Products" style="margin-left: 10px;">
+                <input type="submit" name="sync_inventory" class="button button-primary" value="Sync Inventory" style="margin-left: 10px;">
             </p>
+
+            <?php if (isset($_POST['sync_inventory'])): 
+                $result = sync_all_inventory();
+                if ($result) {
+                    echo '<div class="notice notice-success"><p>Inventory synced successfully!</p></div>';
+                } else {
+                    echo '<div class="notice notice-error"><p>Some inventory failed to sync. Check debug log for details.</p></div>';
+                }
+            endif; ?>
 
             <?php if (isset($_POST['sync_all_products'])): 
                 $result = sync_all_store_products();
