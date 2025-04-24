@@ -136,7 +136,7 @@ function sync_stores() {
 
     foreach ($stores as $store) {
         if ($store->status !== 'test') {
-            $wpdb->replace(
+            $result = $wpdb->replace(
                 $wpdb->prefix . 'aspos_stores',
                 array(
                     'id' => $store->id,
@@ -150,8 +150,12 @@ function sync_stores() {
                     'street' => $store->street
                 )
             );
+            
+            // Sync products for this store
+            sync_store_products($store->id);
         }
     }
+    return true; // Return true on successful sync
 }
 
 // Sync products for a store
@@ -173,6 +177,7 @@ function sync_store_products($store_id) {
     }
 
     $products = json_decode(wp_remote_retrieve_body($response));
+    store_migrator_log("Syncing " . count($products) . " products for store $store_id");
     
     foreach ($products as $product) {
         $post_meta = array(
