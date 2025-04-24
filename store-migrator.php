@@ -61,8 +61,13 @@ function store_migrator_create_tables() {
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
     ) $charset_collate;";
     
+    store_migrator_log("Attempting to create stores table with SQL: " . $stores_sql);
     $stores_result = dbDelta($stores_sql);
-    store_migrator_log("Creating stores table: " . print_r($stores_result, true));
+    store_migrator_log("Result of stores table creation: " . print_r($stores_result, true));
+    
+    if ($wpdb->last_error) {
+        store_migrator_log("Database error during stores table creation: " . $wpdb->last_error, 'error');
+    }
 
     // Inventory table
     $inventory_sql = "CREATE TABLE IF NOT EXISTS `{$wpdb->prefix}aspos_inventory` (
