@@ -493,5 +493,13 @@ function sync_store_prices() {
 
     store_migrator_log("Successfully saved prices to: $json_file");
     store_migrator_log("Updated prices for $updated_count products in inventory table");
+    
+    // Delete the temporary JSON file
+    if (unlink($json_file)) {
+        store_migrator_log("Deleted temporary JSON file: $json_file");
+    } else {
+        store_migrator_log("Failed to delete temporary JSON file: $json_file", 'error');
+    }
+    
     return true;
 }
