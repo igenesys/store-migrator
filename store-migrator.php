@@ -55,7 +55,7 @@ function store_migrator_create_table() {
         salePrice VARCHAR(255) NOT NULL,
         priceInclTax VARCHAR(255) NOT NULL,
         priceExclTax VARCHAR(255) NOT NULL,
-        
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         PRIMARY KEY (ID)
     ) $charset_collate;";
 
