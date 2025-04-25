@@ -22,12 +22,16 @@ function is_aspos_configured() {
 
 // Function to validate ASPOS settings
 function validate_aspos_settings() {
-    if (!is_aspos_configured()) {
+    if (!ASPOS_CLIENT_ID || !ASPOS_CLIENT_SECRET || !ASPOS_TOKEN_URL || !ASPOS_API_BASE) {
         return false;
     }
 
     $token = get_aspos_token();
-    return $token !== false;
+    if (!$token) {
+        store_migrator_log('Failed to get token during validation', 'error');
+        return false;
+    }
+    return true;
 }
 
 function store_migrator_log($message, $type = 'info') {
