@@ -176,19 +176,16 @@ function store_migrator_aspos_settings_page() {
         update_option('aspos_token_url', sanitize_text_field($_POST['token_url']));
         update_option('aspos_api_base', sanitize_text_field($_POST['api_base']));
         
+        // Save the values first
+        $saved = true;
         if (validate_aspos_settings()) {
             echo '<div class="notice notice-success"><p>Settings saved and validated successfully!</p></div>';
         } else {
-            echo '<div class="notice notice-error"><p>Settings validation failed. Please check your credentials and API endpoints.</p></div>';
-            // Clear invalid settings
-            delete_option('aspos_client_id');
-            delete_option('aspos_client_secret');
-            delete_option('aspos_token_url');
-            delete_option('aspos_api_base');
+            echo '<div class="notice notice-error"><p>Settings validation failed. Please check your credentials and API endpoints. Your entered values have been saved.</p></div>';
         }
     }
     
-    $client_id = get_option('aspos_client_id', ASPOS_CLIENT_ID);
+    $client_id = get_option('aspos_client_id');
     $client_secret = get_option('aspos_client_secret', ASPOS_CLIENT_SECRET);
     $token_url = get_option('aspos_token_url', ASPOS_TOKEN_URL);
     $api_base = get_option('aspos_api_base', ASPOS_API_BASE);
