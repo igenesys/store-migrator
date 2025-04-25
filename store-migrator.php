@@ -400,7 +400,75 @@ function store_migrator_settings_page() {
                 <pre><?php echo esc_html(file_exists(STORE_MIGRATOR_LOG_FILE) ? file_get_contents(STORE_MIGRATOR_LOG_FILE) : 'No logs yet.'); ?></pre>
             </div>
             <?php endif; ?>
+
+            <?php if (isset($_POST['sync_prices'])): 
+                $result = sync_store_prices();
+                if ($result) {
+                    echo '<div class="notice notice-success"><p>Prices synced successfully!</p></div>';
+                } else {
+                    echo '<div class="notice notice-error"><p>Failed to sync prices. Check debug log for details.</p></div>';
+                }
+            endif; ?>
+
+            <p><input type="submit" name="sync_prices" class="button button-primary" value="Sync Prices"></p>
         </form>
     </div>
     <?php
+}
+
+// Sync prices from all stores
+function sync_store_prices() {
+    global $wpdb;
+    $token = get_aspos_token();
+    if (!$token) {
+        store_migrator_log("Failed to get token for price sync", 'error');
+        return false;
+    }
+
+    // Create temp directory if it doesn't exist
+    $temp_dir = WP_CONTENT_DIR . '/temp';
+    if (!file_exists($temp_dir)) {
+        mkdir($temp_dir, 0755, true);
+    }
+
+    $stores = $wpdb->get_results("SELECT id FROM {$wpdb->prefix}aspos_stores");
+    $all_products = array();
+
+    foreach ($stores as $store) {
+        $args = array(
+            'headers' => array(
+                'Authorization' => 'Bearer ' . $token
+            ),
+            'timeout' => 300,
+            'sslverify' => false
+        );
+
+        $response = wp_remote_get(ASPOS_API_BASE . "/sync/web-products?storeId={$store->id}", $args);
+        if (is_wp_error($response)) {
+            store_migrator_log("Price sync failed for store {$store->id}: " . $response->get_error_message(), 'error');
+            continue;
+        }
+
+        $products = json_decode(wp_remote_retrieve_body($response));
+        foreach ($products as $product) {
+            $all_products[] = array(
+                'id' => $product->id,
+                'priceInclTax' => $product->priceInclTax,
+                'priceExclTax' => $product->priceExclTax,
+                'storeID' => $store->id
+            );
+        }
+    }
+
+    // Save to JSON file
+    $json_file = $temp_dir . '/store_prices_' . date('Y-m-d_H-i-s') . '.json';
+    $result = file_put_contents($json_file, json_encode($all_products, JSON_PRETTY_PRINT));
+    
+    if ($result === false) {
+        store_migrator_log("Failed to save prices JSON file", 'error');
+        return false;
+    }
+
+    store_migrator_log("Successfully saved prices to: $json_file");
+    return true;
 }
