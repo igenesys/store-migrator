@@ -469,6 +469,29 @@ function sync_store_prices() {
         return false;
     }
 
+    // Update inventory table with prices
+    $updated_count = 0;
+    foreach ($all_products as $product) {
+        $result = $wpdb->update(
+            $wpdb->prefix . 'aspos_inventory',
+            array(
+                'priceInclTax' => $product['priceInclTax'],
+                'priceExclTax' => $product['priceExclTax']
+            ),
+            array(
+                'aspos_product_id' => $product['id'],
+                'storeId' => $product['storeID']
+            ),
+            array('%s', '%s'),
+            array('%s', '%s')
+        );
+        
+        if ($result !== false) {
+            $updated_count++;
+        }
+    }
+
     store_migrator_log("Successfully saved prices to: $json_file");
+    store_migrator_log("Updated prices for $updated_count products in inventory table");
     return true;
 }
