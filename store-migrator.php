@@ -154,20 +154,20 @@ function sync_stores() {
 // Add admin menu
 function store_migrator_menu() {
     add_menu_page(
-        'Store Migrator',
-        'Store Migrator',
-        'manage_options',
-        'store-migrator-settings',
-        'store_migrator_settings_page'
-    );
-    
-    add_submenu_page(
-        'store-migrator-settings',
         'ASPOS Settings',
-        'ASPOS Settings',
+        'Store Migrator',
         'manage_options',
         'store-migrator-aspos-settings',
         'store_migrator_aspos_settings_page'
+    );
+    
+    add_submenu_page(
+        'store-migrator-aspos-settings',
+        'Store Settings',
+        'Store Settings',
+        'manage_options',
+        'store-migrator-settings',
+        'store_migrator_settings_page'
     );
 }
 add_action('admin_menu', 'store_migrator_menu');
