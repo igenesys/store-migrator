@@ -9,11 +9,26 @@
 define('STORE_MIGRATOR_DEBUG', true);
 define('STORE_MIGRATOR_LOG_FILE', WP_CONTENT_DIR . '/store-migrator-debug.log');
 
-// Define constants with fallback to options
-define('ASPOS_CLIENT_ID', get_option('aspos_client_id', 'DOSMAX'));
-define('ASPOS_CLIENT_SECRET', get_option('aspos_client_secret', 'UDCBNROARYIYHOKPLOBPYPPMIESKOLEGLUPDHSXMIDHGMRGYEQ'));
-define('ASPOS_TOKEN_URL', get_option('aspos_token_url', 'https://acceptatiewebserviceshdv.aspos.nl/connect/token'));
-define('ASPOS_API_BASE', get_option('aspos_api_base', 'https://acceptatiewebserviceshdv.aspos.nl/api'));
+// Define constants from options
+define('ASPOS_CLIENT_ID', get_option('aspos_client_id'));
+define('ASPOS_CLIENT_SECRET', get_option('aspos_client_secret'));
+define('ASPOS_TOKEN_URL', get_option('aspos_token_url'));
+define('ASPOS_API_BASE', get_option('aspos_api_base'));
+
+// Function to check if ASPOS settings are configured
+function is_aspos_configured() {
+    return ASPOS_CLIENT_ID && ASPOS_CLIENT_SECRET && ASPOS_TOKEN_URL && ASPOS_API_BASE;
+}
+
+// Function to validate ASPOS settings
+function validate_aspos_settings() {
+    if (!is_aspos_configured()) {
+        return false;
+    }
+
+    $token = get_aspos_token();
+    return $token !== false;
+}
 
 function store_migrator_log($message, $type = 'info') {
     if (!STORE_MIGRATOR_DEBUG) return;
@@ -160,7 +175,17 @@ function store_migrator_aspos_settings_page() {
         update_option('aspos_client_secret', sanitize_text_field($_POST['client_secret']));
         update_option('aspos_token_url', sanitize_text_field($_POST['token_url']));
         update_option('aspos_api_base', sanitize_text_field($_POST['api_base']));
-        echo '<div class="notice notice-success"><p>Settings saved successfully!</p></div>';
+        
+        if (validate_aspos_settings()) {
+            echo '<div class="notice notice-success"><p>Settings saved and validated successfully!</p></div>';
+        } else {
+            echo '<div class="notice notice-error"><p>Settings validation failed. Please check your credentials and API endpoints.</p></div>';
+            // Clear invalid settings
+            delete_option('aspos_client_id');
+            delete_option('aspos_client_secret');
+            delete_option('aspos_token_url');
+            delete_option('aspos_api_base');
+        }
     }
     
     $client_id = get_option('aspos_client_id', ASPOS_CLIENT_ID);
@@ -387,6 +412,10 @@ function sync_all_store_products() {
 
 // Settings page
 function store_migrator_settings_page() {
+    if (!is_aspos_configured()) {
+        echo '<div class="wrap"><div class="notice notice-error"><p>Please configure ASPOS settings first. <a href="' . admin_url('admin.php?page=store-migrator-aspos-settings') . '">Configure Now</a></p></div></div>';
+        return;
+    }
     global $wpdb;
     
     if (isset($_POST['sync_stores'])) {
