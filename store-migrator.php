@@ -9,11 +9,11 @@
 define('STORE_MIGRATOR_DEBUG', true);
 define('STORE_MIGRATOR_LOG_FILE', WP_CONTENT_DIR . '/store-migrator-debug.log');
 
-// Define constants
-define('ASPOS_CLIENT_ID', 'DOSMAX');
-define('ASPOS_CLIENT_SECRET', 'UDCBNROARYIYHOKPLOBPYPPMIESKOLEGLUPDHSXMIDHGMRGYEQ');
-define('ASPOS_TOKEN_URL', 'https://acceptatiewebserviceshdv.aspos.nl/connect/token');
-define('ASPOS_API_BASE', 'https://acceptatiewebserviceshdv.aspos.nl/api');
+// Define constants with fallback to options
+define('ASPOS_CLIENT_ID', get_option('aspos_client_id', 'DOSMAX'));
+define('ASPOS_CLIENT_SECRET', get_option('aspos_client_secret', 'UDCBNROARYIYHOKPLOBPYPPMIESKOLEGLUPDHSXMIDHGMRGYEQ'));
+define('ASPOS_TOKEN_URL', get_option('aspos_token_url', 'https://acceptatiewebserviceshdv.aspos.nl/connect/token'));
+define('ASPOS_API_BASE', get_option('aspos_api_base', 'https://acceptatiewebserviceshdv.aspos.nl/api'));
 
 function store_migrator_log($message, $type = 'info') {
     if (!STORE_MIGRATOR_DEBUG) return;
@@ -141,8 +141,69 @@ function store_migrator_menu() {
         'store-migrator-settings',
         'store_migrator_settings_page'
     );
+    
+    add_submenu_page(
+        'store-migrator-settings',
+        'ASPOS Settings',
+        'ASPOS Settings',
+        'manage_options',
+        'store-migrator-aspos-settings',
+        'store_migrator_aspos_settings_page'
+    );
 }
 add_action('admin_menu', 'store_migrator_menu');
+
+// ASPOS Settings page
+function store_migrator_aspos_settings_page() {
+    if (isset($_POST['save_aspos_settings'])) {
+        update_option('aspos_client_id', sanitize_text_field($_POST['client_id']));
+        update_option('aspos_client_secret', sanitize_text_field($_POST['client_secret']));
+        update_option('aspos_token_url', sanitize_text_field($_POST['token_url']));
+        update_option('aspos_api_base', sanitize_text_field($_POST['api_base']));
+        echo '<div class="notice notice-success"><p>Settings saved successfully!</p></div>';
+    }
+    
+    $client_id = get_option('aspos_client_id', ASPOS_CLIENT_ID);
+    $client_secret = get_option('aspos_client_secret', ASPOS_CLIENT_SECRET);
+    $token_url = get_option('aspos_token_url', ASPOS_TOKEN_URL);
+    $api_base = get_option('aspos_api_base', ASPOS_API_BASE);
+    ?>
+    <div class="wrap">
+        <h2>ASPOS API Settings</h2>
+        <form method="post" action="">
+            <table class="form-table">
+                <tr>
+                    <th><label for="client_id">Client ID</label></th>
+                    <td>
+                        <input type="text" name="client_id" id="client_id" value="<?php echo esc_attr($client_id); ?>" class="regular-text">
+                    </td>
+                </tr>
+                <tr>
+                    <th><label for="client_secret">Client Secret</label></th>
+                    <td>
+                        <input type="password" name="client_secret" id="client_secret" value="<?php echo esc_attr($client_secret); ?>" class="regular-text">
+                    </td>
+                </tr>
+                <tr>
+                    <th><label for="token_url">Token URL</label></th>
+                    <td>
+                        <input type="url" name="token_url" id="token_url" value="<?php echo esc_attr($token_url); ?>" class="regular-text">
+                    </td>
+                </tr>
+                <tr>
+                    <th><label for="api_base">API Base URL</label></th>
+                    <td>
+                        <input type="url" name="api_base" id="api_base" value="<?php echo esc_attr($api_base); ?>" class="regular-text">
+                    </td>
+                </tr>
+            </table>
+            <p class="submit">
+                <input type="submit" name="save_aspos_settings" class="button button-primary" value="Save Settings">
+            </p>
+        </form>
+    </div>
+    <?php
+}
 
 // Sync products for a store
 function sync_store_products($store_id) {
