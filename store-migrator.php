@@ -282,17 +282,24 @@ function store_migrator_editor_page() {
                         <th>Code</th>
                         <th>City</th>
                         <th>Status</th>
+                        <th>Products</th>
                         <th>Action</th>
                     </tr>
                 </thead>
                 <tbody>
-                    <?php foreach ($stores as $store): ?>
+                    <?php foreach ($stores as $store): 
+                        $product_count = $wpdb->get_var($wpdb->prepare(
+                            "SELECT COUNT(DISTINCT product_id) FROM {$wpdb->prefix}aspos_inventory WHERE storeId = %s",
+                            $store->id
+                        ));
+                    ?>
                         <tr>
                             <td><?php echo esc_html($store->id); ?></td>
                             <td><?php echo esc_html($store->name); ?></td>
                             <td><?php echo esc_html($store->code); ?></td>
                             <td><?php echo esc_html($store->city); ?></td>
                             <td><?php echo esc_html($store->status); ?></td>
+                            <td><?php echo esc_html($product_count); ?></td>
                             <td>
                                 <a href="<?php echo add_query_arg('store_id', $store->id); ?>" class="button">Edit</a>
                             </td>
