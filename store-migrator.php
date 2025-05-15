@@ -169,6 +169,140 @@ function store_migrator_menu() {
         'store-migrator-settings',
         'store_migrator_settings_page'
     );
+
+    add_submenu_page(
+        'store-migrator-aspos-settings',
+        'Store Editor',
+        'Store Editor',
+        'manage_options',
+        'store-migrator-editor',
+        'store_migrator_editor_page'
+    );
+}
+
+// Store Editor page
+function store_migrator_editor_page() {
+    if (!is_aspos_configured()) {
+        echo '<div class="wrap"><div class="notice notice-error"><p>Please configure ASPOS settings first. <a href="' . admin_url('admin.php?page=store-migrator-aspos-settings') . '">Configure Now</a></p></div></div>';
+        return;
+    }
+
+    global $wpdb;
+    
+    // Handle store updates
+    if (isset($_POST['update_store'])) {
+        $wpdb->update(
+            $wpdb->prefix . 'aspos_stores',
+            array(
+                'name' => sanitize_text_field($_POST['name']),
+                'city' => sanitize_text_field($_POST['city']),
+                'code' => sanitize_text_field($_POST['code']),
+                'email' => sanitize_text_field($_POST['email']),
+                'phone_number' => sanitize_text_field($_POST['phone_number']),
+                'postal_code' => sanitize_text_field($_POST['postal_code']),
+                'street' => sanitize_text_field($_POST['street']),
+                'status' => sanitize_text_field($_POST['status'])
+            ),
+            array('id' => $_POST['store_id']),
+            array('%s', '%s', '%s', '%s', '%s', '%s', '%s', '%s'),
+            array('%s')
+        );
+        echo '<div class="notice notice-success"><p>Store updated successfully!</p></div>';
+    }
+
+    // Get store data
+    $store_id = isset($_GET['store_id']) ? $_GET['store_id'] : null;
+    $stores = $wpdb->get_results("SELECT * FROM {$wpdb->prefix}aspos_stores ORDER BY name");
+    ?>
+    <div class="wrap">
+        <h2>Store Editor</h2>
+        <?php if ($store_id): ?>
+            <?php $store = $wpdb->get_row($wpdb->prepare("SELECT * FROM {$wpdb->prefix}aspos_stores WHERE id = %s", $store_id)); ?>
+            <?php if ($store): ?>
+                <form method="post" action="">
+                    <input type="hidden" name="store_id" value="<?php echo esc_attr($store->id); ?>">
+                    <table class="form-table">
+                        <tr>
+                            <th><label>Store ID</label></th>
+                            <td><?php echo esc_html($store->id); ?></td>
+                        </tr>
+                        <tr>
+                            <th><label for="name">Name</label></th>
+                            <td><input type="text" name="name" id="name" value="<?php echo esc_attr($store->name); ?>" class="regular-text"></td>
+                        </tr>
+                        <tr>
+                            <th><label for="code">Code</label></th>
+                            <td><input type="text" name="code" id="code" value="<?php echo esc_attr($store->code); ?>" class="regular-text"></td>
+                        </tr>
+                        <tr>
+                            <th><label for="email">Email</label></th>
+                            <td><input type="email" name="email" id="email" value="<?php echo esc_attr($store->email); ?>" class="regular-text"></td>
+                        </tr>
+                        <tr>
+                            <th><label for="phone_number">Phone Number</label></th>
+                            <td><input type="text" name="phone_number" id="phone_number" value="<?php echo esc_attr($store->phone_number); ?>" class="regular-text"></td>
+                        </tr>
+                        <tr>
+                            <th><label for="street">Street</label></th>
+                            <td><input type="text" name="street" id="street" value="<?php echo esc_attr($store->street); ?>" class="regular-text"></td>
+                        </tr>
+                        <tr>
+                            <th><label for="city">City</label></th>
+                            <td><input type="text" name="city" id="city" value="<?php echo esc_attr($store->city); ?>" class="regular-text"></td>
+                        </tr>
+                        <tr>
+                            <th><label for="postal_code">Postal Code</label></th>
+                            <td><input type="text" name="postal_code" id="postal_code" value="<?php echo esc_attr($store->postal_code); ?>" class="regular-text"></td>
+                        </tr>
+                        <tr>
+                            <th><label for="status">Status</label></th>
+                            <td>
+                                <select name="status" id="status">
+                                    <option value="active" <?php selected($store->status, 'active'); ?>>Active</option>
+                                    <option value="inactive" <?php selected($store->status, 'inactive'); ?>>Inactive</option>
+                                    <option value="test" <?php selected($store->status, 'test'); ?>>Test</option>
+                                </select>
+                            </td>
+                        </tr>
+                    </table>
+                    <p class="submit">
+                        <input type="submit" name="update_store" class="button button-primary" value="Update Store">
+                        <a href="<?php echo admin_url('admin.php?page=store-migrator-editor'); ?>" class="button">Back to Store List</a>
+                    </p>
+                </form>
+            <?php else: ?>
+                <div class="notice notice-error"><p>Store not found.</p></div>
+            <?php endif; ?>
+        <?php else: ?>
+            <table class="wp-list-table widefat fixed striped">
+                <thead>
+                    <tr>
+                        <th>ID</th>
+                        <th>Name</th>
+                        <th>Code</th>
+                        <th>City</th>
+                        <th>Status</th>
+                        <th>Action</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <?php foreach ($stores as $store): ?>
+                        <tr>
+                            <td><?php echo esc_html($store->id); ?></td>
+                            <td><?php echo esc_html($store->name); ?></td>
+                            <td><?php echo esc_html($store->code); ?></td>
+                            <td><?php echo esc_html($store->city); ?></td>
+                            <td><?php echo esc_html($store->status); ?></td>
+                            <td>
+                                <a href="<?php echo add_query_arg('store_id', $store->id); ?>" class="button">Edit</a>
+                            </td>
+                        </tr>
+                    <?php endforeach; ?>
+                </tbody>
+            </table>
+        <?php endif; ?>
+    </div>
+    <?php
 }
 add_action('admin_menu', 'store_migrator_menu');
 
