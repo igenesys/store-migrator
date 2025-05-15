@@ -595,11 +595,20 @@ function display_store_inventory_meta_box($post) {
                 <th>Physical Stock</th>
                 <th>Regular Price</th>
                 <th>Sale Price</th>
+                <th>Store Address</th>
+                <th>Store Phone</th>
+                <th>Store Email</th>
             </tr>
         </thead>
         <tbody>';
     
     foreach ($inventory_data as $data) {
+        // Get additional store details
+        $store_details = $wpdb->get_row($wpdb->prepare(
+            "SELECT * FROM {$wpdb->prefix}aspos_stores WHERE id = %s",
+            $data->storeId
+        ));
+        
         echo '<tr>
             <td>' . esc_html($data->store_name) . '</td>
             <td>' . esc_html($data->code) . '</td>
@@ -608,6 +617,9 @@ function display_store_inventory_meta_box($post) {
             <td>' . esc_html($data->physicalStockQuantity) . '</td>
             <td>' . esc_html($data->regularPrice) . '</td>
             <td>' . esc_html($data->salePrice) . '</td>
+            <td>' . esc_html($store_details->street . ', ' . $store_details->postal_code) . '</td>
+            <td>' . esc_html($store_details->phone_number) . '</td>
+            <td>' . esc_html($store_details->email) . '</td>
         </tr>';
     }
     
