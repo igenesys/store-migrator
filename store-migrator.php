@@ -117,7 +117,7 @@ function sync_stores() {
         'sslverify' => false
     );
 
-    $response = wp_remote_get(ASPOS_API_BASE . '/stores', $args);
+    $response = wp_remote_get(ASPOS_API_BASE . '/stores?limit=500', $args);
     if (is_wp_error($response)) {
         store_migrator_log('Store sync failed: ' . $response->get_error_message(), 'error');
         return false;
