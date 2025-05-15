@@ -552,6 +552,70 @@ function sync_all_store_products() {
     return $success;
 }
 
+// Add store inventory meta box to product edit page
+function add_store_inventory_meta_box() {
+    add_meta_box(
+        'store_inventory_meta_box',
+        'Store Inventory',
+        'display_store_inventory_meta_box',
+        'product',
+        'normal',
+        'high'
+    );
+}
+add_action('add_meta_boxes', 'add_store_inventory_meta_box');
+
+function display_store_inventory_meta_box($post) {
+    global $wpdb;
+    
+    // Get product's ASPOS ID
+    $aspos_id = get_post_meta($post->ID, '_aspos_id', true);
+    
+    // Get all stores with inventory for this product
+    $inventory_data = $wpdb->get_results($wpdb->prepare(
+        "SELECT i.*, s.name as store_name, s.city, s.code 
+         FROM {$wpdb->prefix}aspos_inventory i 
+         JOIN {$wpdb->prefix}aspos_stores s ON i.storeId = s.id 
+         WHERE i.product_id = %d",
+        $post->ID
+    ));
+    
+    if (empty($inventory_data)) {
+        echo '<p>No inventory data available for this product.</p>';
+        return;
+    }
+    
+    echo '<table class="widefat fixed" style="margin-top: 10px;">
+        <thead>
+            <tr>
+                <th>Store</th>
+                <th>Code</th>
+                <th>City</th>
+                <th>Available Qty</th>
+                <th>Physical Stock</th>
+                <th>Regular Price</th>
+                <th>Sale Price</th>
+            </tr>
+        </thead>
+        <tbody>';
+    
+    foreach ($inventory_data as $data) {
+        echo '<tr>
+            <td>' . esc_html($data->store_name) . '</td>
+            <td>' . esc_html($data->code) . '</td>
+            <td>' . esc_html($data->city) . '</td>
+            <td>' . esc_html($data->availableQuantity) . '</td>
+            <td>' . esc_html($data->physicalStockQuantity) . '</td>
+            <td>' . esc_html($data->regularPrice) . '</td>
+            <td>' . esc_html($data->salePrice) . '</td>
+        </tr>';
+    }
+    
+    echo '</tbody></table>';
+    
+    echo '<p><strong>ASPOS Product ID:</strong> ' . esc_html($aspos_id) . '</p>';
+}
+
 // Settings page
 function store_migrator_settings_page() {
     if (!is_aspos_configured()) {
