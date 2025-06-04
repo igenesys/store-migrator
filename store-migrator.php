@@ -765,21 +765,19 @@ function store_migrator_settings_page() {
     }
     global $wpdb;
     
-    if (isset($_POST['sync_stores'])) {
-        $result = store_migrator_queue_sync('stores');
-        if ($result) {
-            echo '<div class="notice notice-success"><p>Store sync queued successfully! Check back in a few minutes.</p></div>';
+    if (isset($_POST['sync_all_data'])) {
+        // Queue all sync operations in the correct order
+        $results = array();
+        $results[] = store_migrator_queue_sync('stores');
+        $results[] = store_migrator_queue_sync('products');
+        $results[] = store_migrator_queue_sync('inventory');
+        $results[] = store_migrator_queue_sync('prices');
+        
+        $success = !in_array(false, $results);
+        if ($success) {
+            echo '<div class="notice notice-success"><p>Complete product sync queued successfully! All processes (Stores → Products → Inventory → Prices) will run in sequence. Check back in a few minutes.</p></div>';
         } else {
-            echo '<div class="notice notice-error"><p>Failed to queue store sync.</p></div>';
-        }
-    }
-
-    if (isset($_POST['sync_products']) && isset($_POST['store_id'])) {
-        $result = store_migrator_queue_sync('products', $_POST['store_id']);
-        if ($result) {
-            echo '<div class="notice notice-success"><p>Product sync queued successfully! Check back in a few minutes.</p></div>';
-        } else {
-            echo '<div class="notice notice-error"><p>Failed to queue product sync.</p></div>';
+            echo '<div class="notice notice-error"><p>Failed to queue some sync operations.</p></div>';
         }
     }
 
@@ -799,46 +797,19 @@ function store_migrator_settings_page() {
         </script>
         <h2>Store Migrator Settings</h2>
         <form method="post" action="">
-            <p><input type="submit" name="sync_stores" class="button button-primary" value="Sync Stores"></p>
-
-            <h3>Sync Products</h3>
-            <select name="store_id" style="width: 300px;">
-                <?php foreach ($stores as $store): ?>
-                    <option value="<?php echo esc_attr($store->id); ?>"><?php echo esc_html($store->name ?: $store->code); ?></option>
-                <?php endforeach; ?>
-            </select>
+            <h3>Complete Product Synchronization</h3>
+            <p>This will sync all data in the following order:</p>
+            <ol>
+                <li>Sync Stores</li>
+                <li>Sync All Products</li>
+                <li>Sync Inventory</li>
+                <li>Sync Prices</li>
+            </ol>
             <p>
-                <input type="submit" name="sync_products" class="button button-primary" value="Sync Products">
-                <input type="submit" name="sync_all_products" class="button button-primary" value="Sync All Products" style="margin-left: 10px;">
-                <input type="submit" name="sync_inventory" class="button button-primary" value="Sync Inventory" style="margin-left: 10px;">
+                <input type="submit" name="sync_all_data" class="button button-primary button-large" value="Sync Products" style="font-size: 16px; padding: 10px 20px;">
             </p>
 
-            <?php if (isset($_POST['sync_inventory'])): 
-                $result = store_migrator_queue_sync('inventory');
-                if ($result) {
-                    echo '<div class="notice notice-success"><p>Inventory sync queued successfully!</p></div>';
-                } else {
-                    echo '<div class="notice notice-error"><p>Failed to queue inventory sync.</p></div>';
-                }
-            endif; ?>
-
-            <?php if (isset($_POST['sync_all_products'])): 
-                $result = store_migrator_queue_sync('products');
-                if ($result) {
-                    echo '<div class="notice notice-success"><p>All store products sync queued successfully!</p></div>';
-                } else {
-                    echo '<div class="notice notice-error"><p>Failed to queue products sync.</p></div>';
-                }
-            endif; ?>
-
-            <?php if (isset($_POST['sync_prices'])): 
-                $result = store_migrator_queue_sync('prices');
-                if ($result) {
-                    echo '<div class="notice notice-success"><p>Price sync queued successfully!</p></div>';
-                } else {
-                    echo '<div class="notice notice-error"><p>Failed to queue price sync.</p></div>';
-                }
-            endif; ?>
+            
 
             <h3>Sync Status</h3>
             <?php
@@ -857,7 +828,7 @@ function store_migrator_settings_page() {
             </div>
             <?php endif; ?>
 
-            <p><input type="submit" name="sync_prices" class="button button-primary" value="Sync Prices"></p>
+            
         </form>
     </div>
     <?php
