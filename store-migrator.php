@@ -117,37 +117,62 @@ function sync_stores() {
         'sslverify' => false
     );
 
-    $response = wp_remote_get(ASPOS_API_BASE . '/stores?includeNonActiveStores=false', $args);
-    if (is_wp_error($response)) {
-        store_migrator_log('Store sync failed: ' . $response->get_error_message(), 'error');
-        return false;
-    }
-
-    $stores = json_decode(wp_remote_retrieve_body($response));
     global $wpdb;
     $count = 0;
-
-    foreach ($stores as $store) {
-        if ($store->status !== 'test') {
-            $result = $wpdb->replace(
-                $wpdb->prefix . 'aspos_stores',
-                array(
-                    'id' => $store->id,
-                    'city' => $store->city,
-                    'code' => $store->code,
-                    'email' => $store->email,
-                    'name' => $store->name,
-                    'phone_number' => $store->phoneNumber,
-                    'postal_code' => $store->postalCode,
-                    'status' => $store->status,
-                    'street' => $store->street
-                )
-            );
-            if ($result) $count++;
+    $page = 1;
+    $limit = 100; // Adjust based on API limits
+    
+    do {
+        $url = ASPOS_API_BASE . "/stores?includeNonActiveStores=false&page={$page}&limit={$limit}";
+        $response = wp_remote_get($url, $args);
+        
+        if (is_wp_error($response)) {
+            store_migrator_log("Store sync failed on page {$page}: " . $response->get_error_message(), 'error');
+            return false;
         }
-    }
 
-    store_migrator_log("Successfully synced $count stores");
+        $response_body = wp_remote_retrieve_body($response);
+        $data = json_decode($response_body);
+        
+        // Handle different response formats
+        $stores = is_array($data) ? $data : (isset($data->data) ? $data->data : array());
+        $has_more = false;
+        
+        if (isset($data->pagination)) {
+            $has_more = $data->pagination->hasMore ?? false;
+        } elseif (isset($data->hasMore)) {
+            $has_more = $data->hasMore;
+        } else {
+            // If no pagination info, check if we got a full page
+            $has_more = count($stores) >= $limit;
+        }
+
+        foreach ($stores as $store) {
+            if ($store->status !== 'test') {
+                $result = $wpdb->replace(
+                    $wpdb->prefix . 'aspos_stores',
+                    array(
+                        'id' => $store->id,
+                        'city' => $store->city,
+                        'code' => $store->code,
+                        'email' => $store->email,
+                        'name' => $store->name,
+                        'phone_number' => $store->phoneNumber,
+                        'postal_code' => $store->postalCode,
+                        'status' => $store->status,
+                        'street' => $store->street
+                    )
+                );
+                if ($result) $count++;
+            }
+        }
+        
+        store_migrator_log("Processed page {$page} with " . count($stores) . " stores");
+        $page++;
+        
+    } while ($has_more && count($stores) > 0);
+
+    store_migrator_log("Successfully synced $count stores across " . ($page - 1) . " pages");
     return true;
 }
 
@@ -390,61 +415,86 @@ function sync_store_products($store_id) {
         'sslverify' => false
     );
 
-    $response = wp_remote_get(ASPOS_API_BASE . "/sync/web-products?storeId={$store_id}", $args);
-    if (is_wp_error($response)) {
-        store_migrator_log("Product sync failed for store {$store_id}: " . $response->get_error_message(), 'error');
-        return false;
-    }
-
-    $products = json_decode(wp_remote_retrieve_body($response));
     $count = 0;
+    $page = 1;
+    $limit = 50; // Adjust based on API limits
+    
+    do {
+        $url = ASPOS_API_BASE . "/sync/web-products?storeId={$store_id}&page={$page}&limit={$limit}";
+        $response = wp_remote_get($url, $args);
+        
+        if (is_wp_error($response)) {
+            store_migrator_log("Product sync failed for store {$store_id} on page {$page}: " . $response->get_error_message(), 'error');
+            return false;
+        }
 
-    foreach ($products as $product) {
-        // Check if product already exists by ASPOS ID
-        $existing_product_id = get_posts(array(
-            'post_type' => 'product',
-            'meta_key' => '_aspos_id',
-            'meta_value' => $product->id,
-            'posts_per_page' => 1,
-            'fields' => 'ids'
-        ));
-
-        $post_data = array(
-            'post_title' => $product->description ?? '',
-            'post_content' => $product->description ?? '',
-            'post_status' => 'publish',
-            'post_type' => 'product'
-        );
-
-        if ($existing_product_id) {
-            $post_data['ID'] = $existing_product_id[0];
-            $post_id = wp_update_post($post_data);
+        $response_body = wp_remote_retrieve_body($response);
+        $data = json_decode($response_body);
+        
+        // Handle different response formats
+        $products = is_array($data) ? $data : (isset($data->data) ? $data->data : array());
+        $has_more = false;
+        
+        if (isset($data->pagination)) {
+            $has_more = $data->pagination->hasMore ?? false;
+        } elseif (isset($data->hasMore)) {
+            $has_more = $data->hasMore;
         } else {
-            $post_id = wp_insert_post($post_data);
+            // If no pagination info, check if we got a full page
+            $has_more = count($products) >= $limit;
         }
 
-        if ($post_id) {
-            update_post_meta($post_id, '_aspos_id', $product->id);
-            update_post_meta($post_id, '_price', $product->priceInclTax);
-            update_post_meta($post_id, '_regular_price', $product->priceInclTax);
-            
-            // Get existing store IDs
-            $store_ids = get_post_meta($post_id, '_aspos_store_ids', true);
-            if (!is_array($store_ids)) {
-                $store_ids = array();
-            }
-            
-            // Add current store ID if not exists
-            if (!in_array($store_id, $store_ids)) {
-                $store_ids[] = $store_id;
-                update_post_meta($post_id, '_aspos_store_ids', $store_ids);
-            }
-            
-            $count++;
-        }
-    }
+        foreach ($products as $product) {
+            // Check if product already exists by ASPOS ID
+            $existing_product_id = get_posts(array(
+                'post_type' => 'product',
+                'meta_key' => '_aspos_id',
+                'meta_value' => $product->id,
+                'posts_per_page' => 1,
+                'fields' => 'ids'
+            ));
 
-    store_migrator_log("Successfully synced $count products for store $store_id");
+            $post_data = array(
+                'post_title' => $product->description ?? '',
+                'post_content' => $product->description ?? '',
+                'post_status' => 'publish',
+                'post_type' => 'product'
+            );
+
+            if ($existing_product_id) {
+                $post_data['ID'] = $existing_product_id[0];
+                $post_id = wp_update_post($post_data);
+            } else {
+                $post_id = wp_insert_post($post_data);
+            }
+
+            if ($post_id) {
+                update_post_meta($post_id, '_aspos_id', $product->id);
+                update_post_meta($post_id, '_price', $product->priceInclTax);
+                update_post_meta($post_id, '_regular_price', $product->priceInclTax);
+                
+                // Get existing store IDs
+                $store_ids = get_post_meta($post_id, '_aspos_store_ids', true);
+                if (!is_array($store_ids)) {
+                    $store_ids = array();
+                }
+                
+                // Add current store ID if not exists
+                if (!in_array($store_id, $store_ids)) {
+                    $store_ids[] = $store_id;
+                    update_post_meta($post_id, '_aspos_store_ids', $store_ids);
+                }
+                
+                $count++;
+            }
+        }
+        
+        store_migrator_log("Processed page {$page} with " . count($products) . " products for store {$store_id}");
+        $page++;
+        
+    } while ($has_more && count($products) > 0);
+
+    store_migrator_log("Successfully synced $count products for store $store_id across " . ($page - 1) . " pages");
     return true;
 }
 
@@ -861,21 +911,47 @@ function sync_store_prices() {
             'sslverify' => false
         );
 
-        $response = wp_remote_get(ASPOS_API_BASE . "/sync/web-products?storeId={$store->id}", $args);
-        if (is_wp_error($response)) {
-            store_migrator_log("Price sync failed for store {$store->id}: " . $response->get_error_message(), 'error');
-            continue;
-        }
+        $page = 1;
+        $limit = 50; // Adjust based on API limits
+        
+        do {
+            $url = ASPOS_API_BASE . "/sync/web-products?storeId={$store->id}&page={$page}&limit={$limit}";
+            $response = wp_remote_get($url, $args);
+            
+            if (is_wp_error($response)) {
+                store_migrator_log("Price sync failed for store {$store->id} on page {$page}: " . $response->get_error_message(), 'error');
+                break;
+            }
 
-        $products = json_decode(wp_remote_retrieve_body($response));
-        foreach ($products as $product) {
-            $all_products[] = array(
-                'id' => $product->id,
-                'priceInclTax' => $product->priceInclTax,
-                'priceExclTax' => $product->priceExclTax,
-                'storeID' => $store->id
-            );
-        }
+            $response_body = wp_remote_retrieve_body($response);
+            $data = json_decode($response_body);
+            
+            // Handle different response formats
+            $products = is_array($data) ? $data : (isset($data->data) ? $data->data : array());
+            $has_more = false;
+            
+            if (isset($data->pagination)) {
+                $has_more = $data->pagination->hasMore ?? false;
+            } elseif (isset($data->hasMore)) {
+                $has_more = $data->hasMore;
+            } else {
+                // If no pagination info, check if we got a full page
+                $has_more = count($products) >= $limit;
+            }
+
+            foreach ($products as $product) {
+                $all_products[] = array(
+                    'id' => $product->id,
+                    'priceInclTax' => $product->priceInclTax,
+                    'priceExclTax' => $product->priceExclTax,
+                    'storeID' => $store->id
+                );
+            }
+            
+            store_migrator_log("Processed price page {$page} with " . count($products) . " products for store {$store->id}");
+            $page++;
+            
+        } while ($has_more && count($products) > 0);
     }
 
     // Save to JSON file
