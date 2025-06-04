@@ -629,6 +629,134 @@ function display_store_inventory_meta_box($post) {
     echo '<p><strong>ASPOS Product ID:</strong> ' . esc_html($aspos_id) . '</p>';
 }
 
+// Schedule cron jobs on plugin activation
+register_activation_hook(__FILE__, 'store_migrator_schedule_cron');
+register_deactivation_hook(__FILE__, 'store_migrator_unschedule_cron');
+
+function store_migrator_schedule_cron() {
+    if (!wp_next_scheduled('store_migrator_hourly_sync')) {
+        wp_schedule_event(time(), 'hourly', 'store_migrator_hourly_sync');
+    }
+    if (!wp_next_scheduled('store_migrator_daily_full_sync')) {
+        wp_schedule_event(time(), 'daily', 'store_migrator_daily_full_sync');
+    }
+}
+
+function store_migrator_unschedule_cron() {
+    wp_clear_scheduled_hook('store_migrator_hourly_sync');
+    wp_clear_scheduled_hook('store_migrator_daily_full_sync');
+}
+
+// Cron job handlers
+add_action('store_migrator_hourly_sync', 'store_migrator_cron_inventory_sync');
+add_action('store_migrator_daily_full_sync', 'store_migrator_cron_full_sync');
+
+function store_migrator_cron_inventory_sync() {
+    if (!is_aspos_configured()) {
+        store_migrator_log('Cron: ASPOS not configured, skipping inventory sync', 'warning');
+        return;
+    }
+    
+    store_migrator_log('Cron: Starting hourly inventory sync');
+    $result = sync_all_inventory();
+    store_migrator_log('Cron: Hourly inventory sync ' . ($result ? 'completed' : 'failed'));
+}
+
+function store_migrator_cron_full_sync() {
+    if (!is_aspos_configured()) {
+        store_migrator_log('Cron: ASPOS not configured, skipping full sync', 'warning');
+        return;
+    }
+    
+    store_migrator_log('Cron: Starting daily full sync');
+    
+    // Sync stores first
+    $stores_result = sync_stores();
+    store_migrator_log('Cron: Store sync ' . ($stores_result ? 'completed' : 'failed'));
+    
+    // Sync all products
+    $products_result = sync_all_store_products();
+    store_migrator_log('Cron: Product sync ' . ($products_result ? 'completed' : 'failed'));
+    
+    // Sync inventory
+    $inventory_result = sync_all_inventory();
+    store_migrator_log('Cron: Inventory sync ' . ($inventory_result ? 'completed' : 'failed'));
+    
+    // Sync prices
+    $prices_result = sync_store_prices();
+    store_migrator_log('Cron: Price sync ' . ($prices_result ? 'completed' : 'failed'));
+    
+    store_migrator_log('Cron: Daily full sync completed');
+}
+
+// Add manual queue processing
+function store_migrator_queue_sync($type, $store_id = null) {
+    $queue_option = 'store_migrator_sync_queue';
+    $queue = get_option($queue_option, array());
+    
+    $task = array(
+        'type' => $type,
+        'store_id' => $store_id,
+        'timestamp' => time(),
+        'status' => 'pending'
+    );
+    
+    $queue[] = $task;
+    update_option($queue_option, $queue);
+    
+    // Schedule immediate processing
+    wp_schedule_single_event(time() + 30, 'store_migrator_process_queue');
+    
+    store_migrator_log("Queued sync task: $type" . ($store_id ? " for store $store_id" : ''));
+    return true;
+}
+
+add_action('store_migrator_process_queue', 'store_migrator_process_sync_queue');
+
+function store_migrator_process_sync_queue() {
+    $queue_option = 'store_migrator_sync_queue';
+    $queue = get_option($queue_option, array());
+    
+    if (empty($queue)) {
+        return;
+    }
+    
+    // Process first item in queue
+    $task = array_shift($queue);
+    
+    store_migrator_log("Processing queue task: {$task['type']}");
+    
+    $result = false;
+    switch($task['type']) {
+        case 'stores':
+            $result = sync_stores();
+            break;
+        case 'products':
+            if ($task['store_id']) {
+                $result = sync_store_products($task['store_id']);
+            } else {
+                $result = sync_all_store_products();
+            }
+            break;
+        case 'inventory':
+            $result = sync_all_inventory();
+            break;
+        case 'prices':
+            $result = sync_store_prices();
+            break;
+    }
+    
+    store_migrator_log("Queue task {$task['type']} " . ($result ? 'completed' : 'failed'));
+    
+    // Update queue
+    update_option($queue_option, $queue);
+    
+    // If more items in queue, schedule next processing
+    if (!empty($queue)) {
+        wp_schedule_single_event(time() + 60, 'store_migrator_process_queue');
+    }
+}
+
 // Settings page
 function store_migrator_settings_page() {
     if (!is_aspos_configured()) {
@@ -638,20 +766,20 @@ function store_migrator_settings_page() {
     global $wpdb;
     
     if (isset($_POST['sync_stores'])) {
-        $result = sync_stores();
+        $result = store_migrator_queue_sync('stores');
         if ($result) {
-            echo '<div class="notice notice-success"><p>Stores synced successfully!</p></div>';
+            echo '<div class="notice notice-success"><p>Store sync queued successfully! Check back in a few minutes.</p></div>';
         } else {
-            echo '<div class="notice notice-error"><p>Store sync failed. Check debug log for details.</p></div>';
+            echo '<div class="notice notice-error"><p>Failed to queue store sync.</p></div>';
         }
     }
 
     if (isset($_POST['sync_products']) && isset($_POST['store_id'])) {
-        $result = sync_store_products($_POST['store_id']);
+        $result = store_migrator_queue_sync('products', $_POST['store_id']);
         if ($result) {
-            echo '<div class="notice notice-success"><p>Products synced successfully!</p></div>';
+            echo '<div class="notice notice-success"><p>Product sync queued successfully! Check back in a few minutes.</p></div>';
         } else {
-            echo '<div class="notice notice-error"><p>Product sync failed. Check debug log for details.</p></div>';
+            echo '<div class="notice notice-error"><p>Failed to queue product sync.</p></div>';
         }
     }
 
@@ -686,22 +814,41 @@ function store_migrator_settings_page() {
             </p>
 
             <?php if (isset($_POST['sync_inventory'])): 
-                $result = sync_all_inventory();
+                $result = store_migrator_queue_sync('inventory');
                 if ($result) {
-                    echo '<div class="notice notice-success"><p>Inventory synced successfully!</p></div>';
+                    echo '<div class="notice notice-success"><p>Inventory sync queued successfully!</p></div>';
                 } else {
-                    echo '<div class="notice notice-error"><p>Some inventory failed to sync. Check debug log for details.</p></div>';
+                    echo '<div class="notice notice-error"><p>Failed to queue inventory sync.</p></div>';
                 }
             endif; ?>
 
             <?php if (isset($_POST['sync_all_products'])): 
-                $result = sync_all_store_products();
+                $result = store_migrator_queue_sync('products');
                 if ($result) {
-                    echo '<div class="notice notice-success"><p>All store products synced successfully!</p></div>';
+                    echo '<div class="notice notice-success"><p>All store products sync queued successfully!</p></div>';
                 } else {
-                    echo '<div class="notice notice-error"><p>Some stores failed to sync products. Check debug log for details.</p></div>';
+                    echo '<div class="notice notice-error"><p>Failed to queue products sync.</p></div>';
                 }
             endif; ?>
+
+            <?php if (isset($_POST['sync_prices'])): 
+                $result = store_migrator_queue_sync('prices');
+                if ($result) {
+                    echo '<div class="notice notice-success"><p>Price sync queued successfully!</p></div>';
+                } else {
+                    echo '<div class="notice notice-error"><p>Failed to queue price sync.</p></div>';
+                }
+            endif; ?>
+
+            <h3>Sync Status</h3>
+            <?php
+            $queue = get_option('store_migrator_sync_queue', array());
+            $next_hourly = wp_next_scheduled('store_migrator_hourly_sync');
+            $next_daily = wp_next_scheduled('store_migrator_daily_full_sync');
+            ?>
+            <p><strong>Queue Items:</strong> <?php echo count($queue); ?></p>
+            <p><strong>Next Hourly Sync:</strong> <?php echo $next_hourly ? date('Y-m-d H:i:s', $next_hourly) : 'Not scheduled'; ?></p>
+            <p><strong>Next Daily Sync:</strong> <?php echo $next_daily ? date('Y-m-d H:i:s', $next_daily) : 'Not scheduled'; ?></p>
 
             <?php if (STORE_MIGRATOR_DEBUG): ?>
             <h3>Debug Log</h3>
@@ -709,15 +856,6 @@ function store_migrator_settings_page() {
                 <pre><?php echo esc_html(file_exists(STORE_MIGRATOR_LOG_FILE) ? file_get_contents(STORE_MIGRATOR_LOG_FILE) : 'No logs yet.'); ?></pre>
             </div>
             <?php endif; ?>
-
-            <?php if (isset($_POST['sync_prices'])): 
-                $result = sync_store_prices();
-                if ($result) {
-                    echo '<div class="notice notice-success"><p>Prices synced successfully!</p></div>';
-                } else {
-                    echo '<div class="notice notice-error"><p>Failed to sync prices. Check debug log for details.</p></div>';
-                }
-            endif; ?>
 
             <p><input type="submit" name="sync_prices" class="button button-primary" value="Sync Prices"></p>
         </form>
