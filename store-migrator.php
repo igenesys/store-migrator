@@ -212,7 +212,7 @@ function store_migrator_editor_page() {
 
     // Get store data
     $store_id = isset($_GET['store_id']) ? $_GET['store_id'] : null;
-    $stores = $wpdb->get_results("SELECT * FROM {$wpdb->prefix}aspos_stores ORDER BY name");
+    $stores = $wpdb->get_results("SELECT * FROM {$wpdb->prefix}aspos_stores ORDER BY code ASC");
     ?>
     <div class="wrap">
         <h2>Store Editor</h2>
@@ -278,6 +278,7 @@ function store_migrator_editor_page() {
                 <thead>
                     <tr>
                         <th>ID</th>
+                        <th>ASPOS Store ID</th>
                         <th>Name</th>
                         <th>Code</th>
                         <th>City</th>
@@ -287,13 +288,15 @@ function store_migrator_editor_page() {
                     </tr>
                 </thead>
                 <tbody>
-                    <?php foreach ($stores as $store): 
+                    <?php $i=0; foreach ($stores as $store): 
                         $product_count = $wpdb->get_var($wpdb->prepare(
                             "SELECT COUNT(DISTINCT product_id) FROM {$wpdb->prefix}aspos_inventory WHERE storeId = %s",
                             $store->id
                         ));
+                        $i++;
                     ?>
                         <tr>
+                            <td><?php echo esc_html($i); ?></td>    
                             <td><?php echo esc_html($store->id); ?></td>
                             <td><?php echo esc_html($store->name); ?></td>
                             <td><?php echo esc_html($store->code); ?></td>
@@ -588,16 +591,15 @@ function display_store_inventory_meta_box($post) {
     echo '<table class="widefat fixed" style="margin-top: 10px;">
         <thead>
             <tr>
-                <th>Store</th>
+                <th>ASPOS Product ID</th>
+                <th>Store ID</th>
+                <th>Store name</th>
                 <th>Code</th>
                 <th>City</th>
                 <th>Available Qty</th>
                 <th>Physical Stock</th>
-                <th>Regular Price</th>
-                <th>Sale Price</th>
-                <th>Store Address</th>
-                <th>Store Phone</th>
-                <th>Store Email</th>
+                <th>priceInclTax</th>
+                <th>priceExclTax</th>
             </tr>
         </thead>
         <tbody>';
@@ -610,16 +612,15 @@ function display_store_inventory_meta_box($post) {
         ));
         
         echo '<tr>
+            <td>' . esc_html($data->aspos_product_id) . '</td>
+            <td>' . esc_html($data->storeId) . '</td>
             <td>' . esc_html($data->store_name) . '</td>
             <td>' . esc_html($data->code) . '</td>
             <td>' . esc_html($data->city) . '</td>
             <td>' . esc_html($data->availableQuantity) . '</td>
             <td>' . esc_html($data->physicalStockQuantity) . '</td>
-            <td>' . esc_html($data->regularPrice) . '</td>
-            <td>' . esc_html($data->salePrice) . '</td>
-            <td>' . esc_html($store_details->street . ', ' . $store_details->postal_code) . '</td>
-            <td>' . esc_html($store_details->phone_number) . '</td>
-            <td>' . esc_html($store_details->email) . '</td>
+            <td>' . esc_html($data->priceInclTax) . '</td>
+            <td>' . esc_html($data->priceExclTax) . '</td>
         </tr>';
     }
     
