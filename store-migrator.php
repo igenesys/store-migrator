@@ -894,9 +894,18 @@ function store_migrator_settings_page() {
             <p><strong>Next Daily Sync:</strong> <?php echo $next_daily ? date('Y-m-d H:i:s', $next_daily) : 'Not scheduled'; ?></p>
 
             <?php if (STORE_MIGRATOR_DEBUG): ?>
-            <h3>Debug Log</h3>
+            <h3>Debug Log (Latest First)</h3>
             <div style="background: #fff; padding: 10px; margin-top: 10px; max-height: 400px; overflow: auto;">
-                <pre><?php echo esc_html(file_exists(STORE_MIGRATOR_LOG_FILE) ? file_get_contents(STORE_MIGRATOR_LOG_FILE) : 'No logs yet.'); ?></pre>
+                <pre><?php 
+                if (file_exists(STORE_MIGRATOR_LOG_FILE)) {
+                    $log_content = file_get_contents(STORE_MIGRATOR_LOG_FILE);
+                    $log_lines = explode("\n", $log_content);
+                    $log_lines = array_reverse($log_lines);
+                    echo esc_html(implode("\n", $log_lines));
+                } else {
+                    echo 'No logs yet.';
+                }
+                ?></pre>
             </div>
             <?php endif; ?>
 
