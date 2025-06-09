@@ -120,7 +120,7 @@ function sync_stores() {
     global $wpdb;
     $count = 0;
     $page = 1;
-    $limit = 100; // Adjust based on API limits
+    $limit = 50; // Adjust based on API limits
     
     do {
         $url = ASPOS_API_BASE . "/stores?includeNonActiveStores=false&page={$page}&limit={$limit}";
