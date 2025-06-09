@@ -121,6 +121,7 @@ function sync_stores() {
     $count = 0;
     $page = 1;
     $limit = 50; // Adjust based on API limits
+    $testing_page_limit = get_option('aspos_testing_page_limit', 0);
     
     do {
         $url = ASPOS_API_BASE . "/stores?includeNonActiveStores=false&page={$page}&limit={$limit}";
@@ -169,6 +170,12 @@ function sync_stores() {
         
         store_migrator_log("Processed page {$page} with " . count($stores) . " stores");
         $page++;
+        
+        // Check testing page limit
+        if ($testing_page_limit > 0 && $page > $testing_page_limit) {
+            store_migrator_log("Reached testing page limit of {$testing_page_limit} pages");
+            break;
+        }
         
     } while ($has_more && count($stores) > 0);
 
@@ -348,6 +355,7 @@ function store_migrator_aspos_settings_page() {
         update_option('aspos_client_secret', sanitize_text_field($_POST['client_secret']));
         update_option('aspos_token_url', sanitize_text_field($_POST['token_url']));
         update_option('aspos_api_base', sanitize_text_field($_POST['api_base']));
+        update_option('aspos_testing_page_limit', intval($_POST['testing_page_limit']));
         
         // Save the values first
         $saved = true;
@@ -391,6 +399,13 @@ function store_migrator_aspos_settings_page() {
                         <input type="url" name="api_base" id="api_base" value="<?php echo esc_attr($api_base); ?>" class="regular-text">
                     </td>
                 </tr>
+                <tr>
+                    <th><label for="testing_page_limit">Testing Page Limit</label></th>
+                    <td>
+                        <input type="number" name="testing_page_limit" id="testing_page_limit" value="<?php echo esc_attr(get_option('aspos_testing_page_limit', 0)); ?>" class="small-text" min="0" max="100">
+                        <p class="description">Set to 0 for no limit (production), or enter number of pages to limit for testing (e.g., 2 for first 2 pages)</p>
+                    </td>
+                </tr>
             </table>
             <p class="submit">
                 <input type="submit" name="save_aspos_settings" class="button button-primary" value="Save Settings">
@@ -418,6 +433,7 @@ function sync_store_products($store_id) {
     $count = 0;
     $page = 1;
     $limit = 50; // Adjust based on API limits
+    $testing_page_limit = get_option('aspos_testing_page_limit', 0);
     
     do {
         $url = ASPOS_API_BASE . "/sync/web-products?storeId={$store_id}&page={$page}&limit={$limit}";
@@ -491,6 +507,12 @@ function sync_store_products($store_id) {
         
         store_migrator_log("Processed page {$page} with " . count($products) . " products for store {$store_id}");
         $page++;
+        
+        // Check testing page limit
+        if ($testing_page_limit > 0 && $page > $testing_page_limit) {
+            store_migrator_log("Reached testing page limit of {$testing_page_limit} pages for store {$store_id}");
+            break;
+        }
         
     } while ($has_more && count($products) > 0);
 
@@ -913,6 +935,7 @@ function sync_store_prices() {
 
         $page = 1;
         $limit = 50; // Adjust based on API limits
+        $testing_page_limit = get_option('aspos_testing_page_limit', 0);
         
         do {
             $url = ASPOS_API_BASE . "/sync/web-products?storeId={$store->id}&page={$page}&limit={$limit}";
@@ -950,6 +973,12 @@ function sync_store_prices() {
             
             store_migrator_log("Processed price page {$page} with " . count($products) . " products for store {$store->id}");
             $page++;
+            
+            // Check testing page limit
+            if ($testing_page_limit > 0 && $page > $testing_page_limit) {
+                store_migrator_log("Reached testing page limit of {$testing_page_limit} pages for store {$store->id}");
+                break;
+            }
             
         } while ($has_more && count($products) > 0);
     }
