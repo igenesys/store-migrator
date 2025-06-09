@@ -928,6 +928,17 @@ function store_migrator_settings_page() {
             echo '<div class="notice notice-error"><p>Failed to queue some sync operations.</p></div>';
         }
     }
+    
+    if (isset($_POST['clear_queue'])) {
+        // Clear the sync queue
+        delete_option('store_migrator_sync_queue');
+        
+        // Clear scheduled events
+        wp_clear_scheduled_hook('store_migrator_process_queue');
+        
+        store_migrator_log('Queue cleared manually by admin');
+        echo '<div class="notice notice-success"><p>Queue cleared successfully! All pending sync operations have been removed.</p></div>';
+    }
 
     // Get stores from database
     $stores = $wpdb->get_results("SELECT * FROM {$wpdb->prefix}aspos_stores");
@@ -957,7 +968,10 @@ function store_migrator_settings_page() {
                 <input type="submit" name="sync_all_data" class="button button-primary button-large" value="Sync Products" style="font-size: 16px; padding: 10px 20px;">
             </p>
 
-            
+            <h3>Queue Management</h3>
+            <p>
+                <input type="submit" name="clear_queue" class="button button-secondary" value="Clear Queue & Kill Processes" onclick="return confirm('Are you sure you want to clear all queue items and stop running processes?');">
+            </p>
 
             <h3>Sync Status</h3>
             <?php
