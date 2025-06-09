@@ -419,6 +419,7 @@ function store_migrator_aspos_settings_page() {
 function sync_store_products($store_id) {
     $token = get_aspos_token();
     if (!$token) {
+        store_migrator_log("Failed to get token for store {$store_id}", 'error');
         return false;
     }
 
@@ -434,8 +435,15 @@ function sync_store_products($store_id) {
     $page = 1;
     $limit = 50; // Adjust based on API limits
     $testing_page_limit = get_option('aspos_testing_page_limit', 0);
+    $start_time = time();
+    $max_execution_time = 300; // 5 minutes per store
     
     do {
+        // Check execution time to prevent timeouts
+        if ((time() - $start_time) > $max_execution_time) {
+            store_migrator_log("Execution time limit reached for store {$store_id} at page {$page}", 'warning');
+            break;
+        }
         $url = ASPOS_API_BASE . "/sync/web-products?storeId={$store_id}&page={$page}&limit={$limit}";
         $response = wp_remote_get($url, $args);
         
@@ -461,47 +469,53 @@ function sync_store_products($store_id) {
         }
 
         foreach ($products as $product) {
-            // Check if product already exists by ASPOS ID
-            $existing_product_id = get_posts(array(
-                'post_type' => 'product',
-                'meta_key' => '_aspos_id',
-                'meta_value' => $product->id,
-                'posts_per_page' => 1,
-                'fields' => 'ids'
-            ));
+            try {
+                // Check if product already exists by ASPOS ID
+                $existing_product_id = get_posts(array(
+                    'post_type' => 'product',
+                    'meta_key' => '_aspos_id',
+                    'meta_value' => $product->id,
+                    'posts_per_page' => 1,
+                    'fields' => 'ids'
+                ));
 
-            $post_data = array(
-                'post_title' => $product->description ?? '',
-                'post_content' => $product->description ?? '',
-                'post_status' => 'publish',
-                'post_type' => 'product'
-            );
+                $post_data = array(
+                    'post_title' => $product->description ?? '',
+                    'post_content' => $product->description ?? '',
+                    'post_status' => 'publish',
+                    'post_type' => 'product'
+                );
 
-            if ($existing_product_id) {
-                $post_data['ID'] = $existing_product_id[0];
-                $post_id = wp_update_post($post_data);
-            } else {
-                $post_id = wp_insert_post($post_data);
-            }
-
-            if ($post_id) {
-                update_post_meta($post_id, '_aspos_id', $product->id);
-                update_post_meta($post_id, '_price', $product->priceInclTax);
-                update_post_meta($post_id, '_regular_price', $product->priceInclTax);
-                
-                // Get existing store IDs
-                $store_ids = get_post_meta($post_id, '_aspos_store_ids', true);
-                if (!is_array($store_ids)) {
-                    $store_ids = array();
+                if ($existing_product_id) {
+                    $post_data['ID'] = $existing_product_id[0];
+                    $post_id = wp_update_post($post_data);
+                } else {
+                    $post_id = wp_insert_post($post_data);
                 }
-                
-                // Add current store ID if not exists
-                if (!in_array($store_id, $store_ids)) {
-                    $store_ids[] = $store_id;
-                    update_post_meta($post_id, '_aspos_store_ids', $store_ids);
+
+                if ($post_id && !is_wp_error($post_id)) {
+                    update_post_meta($post_id, '_aspos_id', $product->id);
+                    update_post_meta($post_id, '_price', $product->priceInclTax ?? 0);
+                    update_post_meta($post_id, '_regular_price', $product->priceInclTax ?? 0);
+                    
+                    // Get existing store IDs
+                    $store_ids = get_post_meta($post_id, '_aspos_store_ids', true);
+                    if (!is_array($store_ids)) {
+                        $store_ids = array();
+                    }
+                    
+                    // Add current store ID if not exists
+                    if (!in_array($store_id, $store_ids)) {
+                        $store_ids[] = $store_id;
+                        update_post_meta($post_id, '_aspos_store_ids', $store_ids);
+                    }
+                    
+                    $count++;
+                } else {
+                    store_migrator_log("Failed to create/update product {$product->id} for store {$store_id}", 'error');
                 }
-                
-                $count++;
+            } catch (Exception $e) {
+                store_migrator_log("Exception processing product {$product->id}: " . $e->getMessage(), 'error');
             }
         }
         
@@ -602,28 +616,80 @@ function sync_all_inventory() {
         'fields' => 'ids'
     ));
 
+    store_migrator_log("Starting inventory sync for " . count($products) . " products");
+    
     $success = true;
+    $synced_count = 0;
+    $failed_count = 0;
+    
     foreach ($products as $product_id) {
-        if (!sync_product_inventory($product_id)) {
+        try {
+            if (sync_product_inventory($product_id)) {
+                $synced_count++;
+            } else {
+                $failed_count++;
+                $success = false;
+            }
+            
+            // Clear memory periodically
+            if ($synced_count % 50 == 0) {
+                if (function_exists('gc_collect_cycles')) {
+                    gc_collect_cycles();
+                }
+                store_migrator_log("Inventory sync progress: {$synced_count} synced, {$failed_count} failed");
+            }
+            
+        } catch (Exception $e) {
+            store_migrator_log("Exception syncing inventory for product {$product_id}: " . $e->getMessage(), 'error');
+            $failed_count++;
             $success = false;
         }
     }
+    
+    store_migrator_log("Inventory sync completed: {$synced_count} synced, {$failed_count} failed");
     return $success;
 }
 
 // Sync products for all stores
 function sync_all_store_products() {
     global $wpdb;
-    $stores = $wpdb->get_results("SELECT id FROM {$wpdb->prefix}aspos_stores");
+    $stores = $wpdb->get_results("SELECT id, name FROM {$wpdb->prefix}aspos_stores");
     $success = true;
+    $total_products = 0;
+    
+    store_migrator_log("Starting product sync for " . count($stores) . " stores");
     
     foreach ($stores as $store) {
+        store_migrator_log("Starting product sync for store: {$store->name} (ID: {$store->id})");
+        
+        // Clear memory before processing each store
+        if (function_exists('gc_collect_cycles')) {
+            gc_collect_cycles();
+        }
+        
         $result = sync_store_products($store->id);
         if (!$result) {
+            store_migrator_log("Failed to sync products for store: {$store->name} (ID: {$store->id})", 'error');
             $success = false;
+        } else {
+            // Count products for this store
+            $store_products = $wpdb->get_var($wpdb->prepare(
+                "SELECT COUNT(*) FROM {$wpdb->prefix}posts p 
+                 INNER JOIN {$wpdb->prefix}postmeta pm ON p.ID = pm.post_id 
+                 WHERE p.post_type = 'product' 
+                 AND pm.meta_key = '_aspos_store_ids' 
+                 AND pm.meta_value LIKE %s",
+                '%' . $store->id . '%'
+            ));
+            $total_products += $store_products;
+            store_migrator_log("Successfully synced products for store: {$store->name} - Products: {$store_products}");
         }
+        
+        // Add a small delay to prevent overwhelming the API
+        sleep(1);
     }
     
+    store_migrator_log("Product sync completed. Total products across all stores: {$total_products}");
     return $success;
 }
 
@@ -746,17 +812,27 @@ function store_migrator_cron_full_sync() {
     $stores_result = sync_stores();
     store_migrator_log('Cron: Store sync ' . ($stores_result ? 'completed' : 'failed'));
     
-    // Sync all products
-    $products_result = sync_all_store_products();
-    store_migrator_log('Cron: Product sync ' . ($products_result ? 'completed' : 'failed'));
-    
-    // Sync inventory
-    $inventory_result = sync_all_inventory();
-    store_migrator_log('Cron: Inventory sync ' . ($inventory_result ? 'completed' : 'failed'));
-    
-    // Sync prices
-    $prices_result = sync_store_prices();
-    store_migrator_log('Cron: Price sync ' . ($prices_result ? 'completed' : 'failed'));
+    // Only continue if stores sync was successful
+    if ($stores_result) {
+        // Sync all products
+        $products_result = sync_all_store_products();
+        store_migrator_log('Cron: Product sync ' . ($products_result ? 'completed' : 'failed'));
+        
+        // Only sync inventory if products sync was successful
+        if ($products_result) {
+            // Sync inventory
+            $inventory_result = sync_all_inventory();
+            store_migrator_log('Cron: Inventory sync ' . ($inventory_result ? 'completed' : 'failed'));
+            
+            // Sync prices
+            $prices_result = sync_store_prices();
+            store_migrator_log('Cron: Price sync ' . ($prices_result ? 'completed' : 'failed'));
+        } else {
+            store_migrator_log('Cron: Skipping inventory and price sync due to product sync failure', 'warning');
+        }
+    } else {
+        store_migrator_log('Cron: Skipping all subsequent syncs due to store sync failure', 'warning');
+    }
     
     store_migrator_log('Cron: Daily full sync completed');
 }
